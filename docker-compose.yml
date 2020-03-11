@@ -1,0 +1,87 @@
+
+version: '3.6'
+services:
+
+
+   proxy:
+      build: ./proxy
+      container_name: proxy
+      command: mitmdump --mode reverse:http://hapi:8080 -s /fhir_proxy_exporter.py
+      ports:
+         - 8080:8080
+      volumes:
+         - ./proxy/fhir_proxy_exporter.py:/fhir_proxy_exporter.py
+      depends_on:
+         - hapi      
+
+   redis:
+      image: redis:5.0
+      container_name: redis
+      ports:
+         - 6379:6379
+      # depends_on:
+      #    - proxy     
+      
+
+      
+      
+   hapi:
+      image: tomcat:9-jre11
+      container_name: hapi
+      command: ["catalina.sh", "run"]
+      ports:
+         - 8088:8080
+         - 8888:8888
+      environment:
+         - JAVA_OPTS=-javaagent:/jmx_prometheus_javaagent-0.12.0.jar=8888:/tomcat.yml 
+                     -Dhapi.properties=/hapi.properties
+                     -Xmx1000m
+      volumes:
+         - ./hapi-fhir-jpaserver.war:/webapps/ROOT.war
+         - ./server.xml:/usr/local/tomcat/conf/server.xml
+         - ./hapi.properties:/hapi.properties
+         - ./jmx_prometheus_javaagent-0.12.0.jar:/jmx_prometheus_javaagent-0.12.0.jar
+         - ./tomcat.yml:/tomcat.yml
+      depends_on:
+         - mysql
+
+
+   mysql:
+      image: mysql:8
+      container_name: mysql
+      environment:
+         - MYSQL_DATABASE=hapi
+         - MYSQL_ROOT_PASSWORD=root
+      volumes:
+         - ./db:/var/lib/mysql
+         - ./grant-mysql-exporter.sql:/docker-entrypoint-initdb.d/grant-mysql-exporter.sql
+
+
+   # mysql_exporter: 
+   #    image: prom/mysqld-exporter
+   #    container_name: mysql_exporter
+   #    ports:
+   #       - 9104:9104
+   #    environment:
+   #       - DATA_SOURCE_NAME=exporter:exporter@(mysql:3306)/hapi
+   #    depends_on:
+   #       - mysql
+
+   # cadvisor:
+   #    image: google/cadvisor:latest
+   #    container_name: cadvisor
+   #    ports:
+   #       - 8080:8080
+   #    volumes:
+   #       - /:/rootfs:ro
+   #       - /var/run:/var/run:rw
+   #       - /sys:/sys:ro
+   #       - /var/lib/docker/:/var/lib/docker:ro        
+        
+   # prometheus:
+   #    image:    prom/prometheus:v2.15.2
+   #    container_name: prometheus
+   #    ports:
+   #       - 9090:9090
+   #    volumes:
+   #       - ./prometheus.yml:/etc/prometheus/prometheus.yml
